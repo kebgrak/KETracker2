@@ -508,7 +508,7 @@ export default function WeeklyPlan() {
                           type="number"
                           min={0}
                           className="w-24 h-8 text-sm"
-                          value={hasPlan && !value ? String(planned) : value}
+                          value={value !== undefined ? value : (hasPlan ? String(planned) : "")}
                           onChange={(e) =>
                             setPendingValues((prev) => ({
                               ...prev,
@@ -522,7 +522,7 @@ export default function WeeklyPlan() {
                           variant="ghost"
                           className="w-7 h-7"
                           onClick={() => handleSave(product.id)}
-                          disabled={createPlan.isPending || !value}
+                          disabled={createPlan.isPending || value === undefined}
                         >
                           <Save className="w-3.5 h-3.5" />
                         </Button>

@@ -73,8 +73,8 @@ app.use("/api", router);
 if (isElectron || isProduction) {
   const frontendDir = process.env["FRONTEND_DIR"]
     ?? path.resolve(
-      fs.existsSync(path.join(process.resourcesPath ?? "", "frontend", "index.html"))
-        ? path.join(process.resourcesPath ?? "", "frontend")
+      fs.existsSync(path.join((process as any).resourcesPath ?? "", "frontend", "index.html"))
+        ? path.join((process as any).resourcesPath ?? "", "frontend")
         : path.join(__dirname, "..", "..", "production-tracker", "dist", "public"),
     );
 

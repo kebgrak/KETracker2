@@ -45,6 +45,7 @@ adminRouter.put("/products/:id", async (req, res) => {
   const body = UpdateProductBody.parse(req.body);
   const [product] = await db.update(productsTable).set(body).where(eq(productsTable.id, id)).returning();
   if (!product) { res.status(404).json({ error: "Product not found" }); return; }
+  await upsertStep99(product.id);
   res.json(product);
 });
 

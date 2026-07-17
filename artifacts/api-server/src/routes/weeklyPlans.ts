@@ -1,17 +1,25 @@
 import { Router } from "express";
 import { db, weeklyPlansTable, productsTable, workReportsTable, stepsTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
+import {
+  ListWeeklyPlansQueryParams,
+  CreateWeeklyPlanBody,
+  GetWeeklyProgressQueryParams,
+} from "@workspace/api-zod";
 
 export const publicRouter = Router();
 export const adminRouter = Router();
 
 // ── GET /api/weekly-plans ─────────────────────────────────────────────────────
 publicRouter.get("/weekly-plans", async (req, res) => {
-  const weekStart = req.query.weekStart;
-  if (!weekStart || typeof weekStart !== "string") {
-    res.status(400).json({ error: "weekStart query param is required (YYYY-MM-DD)" });
-    return;
-  }
+  // We use parse to validate, but since req.query.weekStart is a string "YYYY-MM-DD",
+  // and ListWeeklyPlansQueryParams.weekStart is zod.date(), Zod might try to parse it.
+  // If it's already a valid date string, we can just use it after validation.
+  const { weekStart: ws } = ListWeeklyPlansQueryParams.parse({
+    weekStart: req.query.weekStart,
+  });
+  // Ensure we have a YYYY-MM-DD string for the database
+  const weekStart = ws instanceof Date ? ws.toISOString().split("T")[0] : String(ws);
 
   const rows = await db
     .select({
@@ -32,15 +40,10 @@ publicRouter.get("/weekly-plans", async (req, res) => {
 
 // ── POST /api/weekly-plans ─────────────────────────────────────────────────────
 adminRouter.post("/weekly-plans", async (req, res) => {
-  const body = req.body;
-  const productId = Number(body.productId);
-  const weekStart = String(body.weekStart ?? "");
-  const plannedQuantity = Number(body.plannedQuantity);
-
-  if (!weekStart || !productId || Number.isNaN(plannedQuantity) || plannedQuantity < 0) {
-    res.status(400).json({ error: "Invalid body: productId, weekStart, plannedQuantity required" });
-    return;
-  }
+  const body = CreateWeeklyPlanBody.parse(req.body);
+  const productId = body.productId;
+  const weekStart = body.weekStart.toISOString().split("T")[0];
+  const plannedQuantity = body.plannedQuantity;
 
   // Upsert: delete any existing plan for this product+week, then insert
   await db
@@ -89,17 +92,16 @@ adminRouter.delete("/weekly-plans/:id", async (req, res) => {
 
 // ── GET /api/weekly-plans/progress ────────────────────────────────────────────
 publicRouter.get("/weekly-plans/progress", async (req, res) => {
-  const weekStart = req.query.weekStart;
-  if (!weekStart || typeof weekStart !== "string") {
-    res.status(400).json({ error: "weekStart query param is required (YYYY-MM-DD)" });
-    return;
-  }
+  const { weekStart: ws } = GetWeeklyProgressQueryParams.parse({
+    weekStart: req.query.weekStart,
+  });
+  const weekStart = ws instanceof Date ? ws.toISOString().split("T")[0] : String(ws);
 
   // Compute week end (Sunday)
   const start = new Date(weekStart + "T00:00:00");
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
-  const weekEnd = end.toISOString().split("T")[0];
+  const weekEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
 
   // Get all products with their plans for this week
   const productsWithPlans = await db
