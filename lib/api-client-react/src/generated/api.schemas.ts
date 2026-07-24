@@ -100,6 +100,10 @@ export interface CreateReportBody {
   notes?: string | null;
 }
 
+export interface CreateReportsBatchBody {
+  entries: CreateReportBody[];
+}
+
 export interface DashboardSummary {
   totalOperators: number;
   totalProducts: number;

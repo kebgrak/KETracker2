@@ -12,14 +12,22 @@ import {
 // Public: read-only
 export const publicRouter = Router();
 
+const publicOperatorProjection = {
+  id: operatorsTable.id,
+  name: operatorsTable.name,
+  employeeId: operatorsTable.employeeId,
+  isLineleader: operatorsTable.isLineleader,
+  createdAt: operatorsTable.createdAt,
+};
+
 publicRouter.get("/operators", async (req, res) => {
-  const operators = await db.select().from(operatorsTable).orderBy(operatorsTable.name);
+  const operators = await db.select(publicOperatorProjection).from(operatorsTable).orderBy(operatorsTable.name);
   res.json(operators);
 });
 
 publicRouter.get("/operators/:id", async (req, res) => {
   const { id } = GetOperatorParams.parse({ id: Number(req.params.id) });
-  const [operator] = await db.select().from(operatorsTable).where(eq(operatorsTable.id, id));
+  const [operator] = await db.select(publicOperatorProjection).from(operatorsTable).where(eq(operatorsTable.id, id));
   if (!operator) { res.status(404).json({ error: "Operator not found" }); return; }
   res.json(operator);
 });

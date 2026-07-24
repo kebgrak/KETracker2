@@ -3,6 +3,7 @@ import { db, workReportsTable, operatorsTable, productsTable, stepsTable } from 
 import { and, eq } from "drizzle-orm";
 import {
   CreateReportBody,
+  CreateReportsBatchBody,
   ListReportsQueryParams,
   GetReportParams,
   DeleteReportParams,
@@ -67,65 +68,134 @@ publicRouter.get("/reports/:id", async (req, res) => {
 });
 
 publicRouter.post("/reports", async (req, res) => {
-  const body = CreateReportBody.parse(req.body);
-  // reportDate arrives as a JS Date (coerced by Zod from "YYYY-MM-DD").
-  // Use UTC components so a string like "2026-06-08" is never shifted by the server TZ.
-  const rd = body.reportDate;
-  const reportDate = `${rd.getUTCFullYear()}-${String(rd.getUTCMonth() + 1).padStart(2, "0")}-${String(rd.getUTCDate()).padStart(2, "0")}`;
+  const payload = req.body as unknown;
+  let entries: Array<Awaited<ReturnType<typeof CreateReportBody.parse>>> = [];
 
-  // ── Step 99 duplicate guard: one report per product per day ──────────────
-  const [submittedStep] = await db
-    .select({ stepNumber: stepsTable.stepNumber })
-    .from(stepsTable)
-    .where(eq(stepsTable.id, body.stepId))
-    .limit(1);
-
-  if (submittedStep?.stepNumber === 99) {
-    const existing = await db
-      .select({ id: workReportsTable.id })
-      .from(workReportsTable)
-      .innerJoin(stepsTable, eq(workReportsTable.stepId, stepsTable.id))
-      .where(
-        and(
-          eq(workReportsTable.productId, body.productId),
-          eq(workReportsTable.reportDate, reportDate),
-          eq(stepsTable.stepNumber, 99),
-        ),
-      )
-      .limit(1);
-
-    if (existing.length > 0) {
-      const [product] = await db
-        .select({ name: productsTable.name })
-        .from(productsTable)
-        .where(eq(productsTable.id, body.productId))
-        .limit(1);
-
-      const d = new Date(reportDate + "T00:00:00");
-      const displayDate = d.toLocaleDateString("en-GB", {
-        day: "numeric", month: "long", year: "numeric",
-      });
-      res.status(409).json({
-        error: `For ${displayDate} for product "${product?.name ?? String(body.productId)}" a Step 99 report has already been entered`,
-      });
-      return;
-    }
+  if (Array.isArray(payload)) {
+    entries = payload.map((entry) => CreateReportBody.parse(entry));
+  } else if (payload && typeof payload === "object" && "entries" in payload && Array.isArray((payload as { entries?: unknown }).entries)) {
+    const batch = CreateReportsBatchBody.parse(payload);
+    entries = batch.entries;
+  } else {
+    entries = [CreateReportBody.parse(payload)];
   }
 
-  const [report] = await db.insert(workReportsTable).values({
-    operatorId: body.operatorId,
-    productId: body.productId,
-    stepId: body.stepId,
-    timeWorkedMinutes: String(body.timeWorkedMinutes),
-    quantityCompleted: body.quantityCompleted,
-    operatorCount: body.operatorCount != null ? String(body.operatorCount) : null,
-    reportDate,
-    notes: body.notes ?? null,
-  }).returning();
-  const [operator] = await db.select().from(operatorsTable).where(eq(operatorsTable.id, report.operatorId));
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, report.productId));
-  const [step] = await db.select().from(stepsTable).where(eq(stepsTable.id, report.stepId));
-  res.status(201).json({ ...report, operator, product, step });
+  if (entries.length === 0) {
+    res.status(400).json({ error: "At least one report entry is required." });
+    return;
+  }
+
+  try {
+    const createdReports = await db.transaction(async (tx) => {
+      const results = [] as Array<{
+        id: number;
+        operatorId: number;
+        productId: number;
+        stepId: number;
+        timeWorkedMinutes: string;
+        quantityCompleted: number;
+        operatorCount: string | null;
+        reportDate: string;
+        notes: string | null;
+        createdAt: Date;
+      }>;
+
+      for (const body of entries) {
+        const rd = body.reportDate;
+        const reportDate = `${rd.getUTCFullYear()}-${String(rd.getUTCMonth() + 1).padStart(2, "0")}-${String(rd.getUTCDate()).padStart(2, "0")}`;
+
+        const [submittedStep, operatorExists, productExists, stepExists] = await Promise.all([
+          tx.select({ stepNumber: stepsTable.stepNumber }).from(stepsTable).where(eq(stepsTable.id, body.stepId)).limit(1),
+          tx.select({ id: operatorsTable.id }).from(operatorsTable).where(eq(operatorsTable.id, body.operatorId)).limit(1),
+          tx.select({ id: productsTable.id }).from(productsTable).where(eq(productsTable.id, body.productId)).limit(1),
+          tx.select({ id: stepsTable.id }).from(stepsTable).where(eq(stepsTable.id, body.stepId)).limit(1),
+        ]);
+
+        if (!operatorExists[0] || !productExists[0] || !stepExists[0]) {
+          throw Object.assign(new Error("One or more referenced records could not be found."), { status: 400 });
+        }
+
+        if (submittedStep[0]?.stepNumber === 99) {
+          const existing = await tx
+            .select({ id: workReportsTable.id })
+            .from(workReportsTable)
+            .innerJoin(stepsTable, eq(workReportsTable.stepId, stepsTable.id))
+            .where(
+              and(
+                eq(workReportsTable.productId, body.productId),
+                eq(workReportsTable.reportDate, reportDate),
+                eq(stepsTable.stepNumber, 99),
+              ),
+            )
+            .limit(1);
+
+          if (existing.length > 0) {
+            const [product] = await tx
+              .select({ name: productsTable.name })
+              .from(productsTable)
+              .where(eq(productsTable.id, body.productId))
+              .limit(1);
+
+            const d = new Date(reportDate + "T00:00:00");
+            const displayDate = d.toLocaleDateString("en-GB", {
+              day: "numeric", month: "long", year: "numeric",
+            });
+            throw Object.assign(new Error(`For ${displayDate} for product "${product?.name ?? String(body.productId)}" a Step 99 report has already been entered`), { status: 409 });
+          }
+        }
+
+        try {
+          const [report] = await tx.insert(workReportsTable).values({
+            operatorId: body.operatorId,
+            productId: body.productId,
+            stepId: body.stepId,
+            timeWorkedMinutes: String(body.timeWorkedMinutes),
+            quantityCompleted: body.quantityCompleted,
+            operatorCount: body.operatorCount != null ? String(body.operatorCount) : null,
+            reportDate,
+            notes: body.notes ?? null,
+          }).returning();
+          results.push(report);
+        } catch (error) {
+          const pgError = error as Error & { code?: string };
+          if (pgError.code === "23505") {
+            throw Object.assign(new Error("A duplicate report entry was rejected by the database."), { status: 409 });
+          }
+          if (pgError.code === "23503") {
+            throw Object.assign(new Error("One or more referenced records could not be found."), { status: 400 });
+          }
+          throw error;
+        }
+      }
+
+      return results;
+    });
+
+    if (entries.length === 1) {
+      const [report] = createdReports;
+      const [operator] = await db.select().from(operatorsTable).where(eq(operatorsTable.id, report.operatorId));
+      const [product] = await db.select().from(productsTable).where(eq(productsTable.id, report.productId));
+      const [step] = await db.select().from(stepsTable).where(eq(stepsTable.id, report.stepId));
+      res.status(201).json({ ...report, operator, product, step });
+      return;
+    }
+
+    const response = await Promise.all(createdReports.map(async (report) => {
+      const [operator] = await db.select().from(operatorsTable).where(eq(operatorsTable.id, report.operatorId));
+      const [product] = await db.select().from(productsTable).where(eq(productsTable.id, report.productId));
+      const [step] = await db.select().from(stepsTable).where(eq(stepsTable.id, report.stepId));
+      return { ...report, operator, product, step };
+    }));
+
+    res.status(201).json(response);
+  } catch (error) {
+    const apiError = error as Error & { status?: number };
+    if (apiError.status) {
+      res.status(apiError.status).json({ error: apiError.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 // Admin: delete reports

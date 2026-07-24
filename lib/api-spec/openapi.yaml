@@ -727,6 +727,15 @@ components:
           type: string
           nullable: true
 
+    CreateReportsBatchBody:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateReportBody"
+
     DashboardSummary:
       type: object
       required: [totalOperators, totalProducts, totalReports, totalQuantityCompleted, totalTimeMinutes, recentReports]

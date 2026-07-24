@@ -13,17 +13,36 @@ import { upsertStep99 } from "../lib/step99";
 // Public: read-only
 export const publicRouter = Router();
 
+const publicProductProjection = {
+  id: productsTable.id,
+  name: productsTable.name,
+  description: productsTable.description,
+  revision: productsTable.revision,
+  createdAt: productsTable.createdAt,
+};
+
+const publicStepProjection = {
+  id: stepsTable.id,
+  productId: stepsTable.productId,
+  stepNumber: stepsTable.stepNumber,
+  subStepLabel: stepsTable.subStepLabel,
+  name: stepsTable.name,
+  description: stepsTable.description,
+  standardTimeMinutes: stepsTable.standardTimeMinutes,
+  createdAt: stepsTable.createdAt,
+};
+
 publicRouter.get("/products", async (req, res) => {
-  const products = await db.select().from(productsTable).orderBy(productsTable.name);
+  const products = await db.select(publicProductProjection).from(productsTable).orderBy(productsTable.name);
   res.json(products);
 });
 
 publicRouter.get("/products/:id", async (req, res) => {
   const { id } = GetProductParams.parse({ id: Number(req.params.id) });
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
+  const [product] = await db.select(publicProductProjection).from(productsTable).where(eq(productsTable.id, id));
   if (!product) { res.status(404).json({ error: "Product not found" }); return; }
   const steps = await db
-    .select()
+    .select(publicStepProjection)
     .from(stepsTable)
     .where(eq(stepsTable.productId, id))
     .orderBy(stepsTable.stepNumber);

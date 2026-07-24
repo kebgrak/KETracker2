@@ -77,7 +77,9 @@ export const workReportsTable = pgTable("work_reports", {
   reportDate: date("report_date").notNull(),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  unique("work_reports_unique_product_date_step").on(table.productId, table.reportDate, table.stepId),
+]);
 
 export const insertWorkReportSchema = createInsertSchema(workReportsTable).omit({ id: true, createdAt: true });
 export type InsertWorkReport = z.infer<typeof insertWorkReportSchema>;

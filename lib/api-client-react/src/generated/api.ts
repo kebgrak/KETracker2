@@ -20,6 +20,7 @@ import type {
   CreateOperatorBody,
   CreateProductBody,
   CreateReportBody,
+  CreateReportsBatchBody,
   CreateStepBody,
   CreateWeeklyPlanBody,
   DashboardSummary,
@@ -1502,6 +1503,18 @@ export const createReport = async (
   });
 };
 
+export const createReportsBatch = async (
+  createReportsBatchBody: CreateReportsBatchBody,
+  options?: RequestInit,
+): Promise<WorkReport[]> => {
+  return customFetch<WorkReport[]>(getCreateReportUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createReportsBatchBody),
+  });
+};
+
 export const getCreateReportMutationOptions = <
   TError = ErrorType<unknown>,
   TContext = unknown,
@@ -1567,6 +1580,63 @@ export const useCreateReport = <
   TContext
 > => {
   return useMutation(getCreateReportMutationOptions(options));
+};
+
+export const getCreateReportsBatchMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createReportsBatch>>,
+    TError,
+    { data: BodyType<CreateReportsBatchBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createReportsBatch>>,
+  TError,
+  { data: BodyType<CreateReportsBatchBody> },
+  TContext
+> => {
+  const mutationKey = ["createReportsBatch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createReportsBatch>>,
+    { data: BodyType<CreateReportsBatchBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+    return createReportsBatch(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export const useCreateReportsBatch = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createReportsBatch>>,
+    TError,
+    { data: BodyType<CreateReportsBatchBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createReportsBatch>>,
+  TError,
+  { data: BodyType<CreateReportsBatchBody> },
+  TContext
+> => {
+  return useMutation(getCreateReportsBatchMutationOptions(options));
 };
 
 /**

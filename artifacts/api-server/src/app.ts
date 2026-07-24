@@ -1,5 +1,6 @@
 import express, { type Express, type RequestHandler } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import session from "express-session";
 import pinoHttp from "pino-http";
 import router from "./routes";
@@ -8,6 +9,13 @@ import path from "node:path";
 import fs from "node:fs";
 
 const app: Express = express();
+
+const allowedOrigins = (process.env["CORS_ORIGINS"] ?? "http://localhost:5173,http://127.0.0.1:5173").split(",").map((origin) => origin.trim()).filter(Boolean);
+const isProduction = process.env["NODE_ENV"] === "production";
+const isElectron = !!process.env["ELECTRON"];
+
+app.disable("x-powered-by");
+app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(
   pinoHttp({
@@ -29,12 +37,28 @@ app.use(
   }),
 );
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-const isProduction = process.env["NODE_ENV"] === "production";
-const isElectron = !!process.env["ELECTRON"];
 
 // Trust the reverse proxy so secure cookies and rate-limiting work behind HTTPS proxy
 if (!isElectron) {

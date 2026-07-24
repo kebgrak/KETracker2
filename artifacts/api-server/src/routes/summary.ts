@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, workReportsTable, operatorsTable, productsTable, stepsTable } from "@workspace/db";
-import { and, eq, count, sum, ne, desc } from "drizzle-orm";
+import { and, eq, count, sum, ne, desc, or, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -53,79 +53,68 @@ router.get("/summary/dashboard", async (req, res) => {
 });
 
 router.get("/summary/operator-stats", async (req, res) => {
-  const operators = await db
-    .select()
-    .from(operatorsTable)
-    .where(eq(operatorsTable.isLineleader, false));
-
-  const stats = await Promise.all(
-    operators.map(async (op) => {
-      const [agg] = await db
-        .select({
-          totalReports: count(),
-          totalQuantity: sum(workReportsTable.quantityCompleted),
-          totalTime: sum(workReportsTable.timeWorkedMinutes),
-        })
-        .from(workReportsTable)
-        .innerJoin(stepsTable, eq(workReportsTable.stepId, stepsTable.id))
-        .where(
-          and(
-            eq(workReportsTable.operatorId, op.id),
-            ne(stepsTable.stepNumber, 99),
-          ),
-        );
-
-      return {
-        operatorId: op.id,
-        operatorName: op.name,
-        employeeId: op.employeeId,
-        totalReports: agg.totalReports,
-        totalQuantityCompleted: Number(agg.totalQuantity ?? 0),
-        totalTimeMinutes: Number(agg.totalTime ?? 0),
-      };
+  const stats = await db
+    .select({
+      operatorId: operatorsTable.id,
+      operatorName: operatorsTable.name,
+      employeeId: operatorsTable.employeeId,
+      totalReports: count(workReportsTable.id),
+      totalQuantityCompleted: sum(workReportsTable.quantityCompleted),
+      totalTimeMinutes: sum(workReportsTable.timeWorkedMinutes),
     })
-  );
+    .from(operatorsTable)
+    .leftJoin(workReportsTable, eq(workReportsTable.operatorId, operatorsTable.id))
+    .leftJoin(stepsTable, eq(workReportsTable.stepId, stepsTable.id))
+    .where(and(eq(operatorsTable.isLineleader, false), or(isNull(stepsTable.stepNumber), ne(stepsTable.stepNumber, 99))))
+    .groupBy(operatorsTable.id, operatorsTable.name, operatorsTable.employeeId);
 
-  res.json(stats);
+  res.json(
+    stats.map((row) => ({
+      operatorId: row.operatorId,
+      operatorName: row.operatorName,
+      employeeId: row.employeeId,
+      totalReports: row.totalReports,
+      totalQuantityCompleted: Number(row.totalQuantityCompleted ?? 0),
+      totalTimeMinutes: Number(row.totalTimeMinutes ?? 0),
+    })),
+  );
 });
 
 router.get("/summary/product-stats", async (req, res) => {
-  const products = await db.select().from(productsTable);
-
-  const stats = await Promise.all(
-    products.map(async (p) => {
-      const [agg] = await db
-        .select({
-          totalReports: count(),
-          totalQuantity: sum(workReportsTable.quantityCompleted),
-          totalTime: sum(workReportsTable.timeWorkedMinutes),
-        })
-        .from(workReportsTable)
-        .innerJoin(stepsTable, eq(workReportsTable.stepId, stepsTable.id))
-        .where(
-          and(
-            eq(workReportsTable.productId, p.id),
-            eq(stepsTable.stepNumber, 99),
-          ),
-        );
-
-      const [allStepCount] = await db
-        .select({ count: count() })
-        .from(stepsTable)
-        .where(eq(stepsTable.productId, p.id));
-
-      return {
-        productId: p.id,
-        productName: p.name,
-        totalReports: agg.totalReports,
-        totalQuantityCompleted: Number(agg.totalQuantity ?? 0),
-        totalTimeMinutes: Number(agg.totalTime ?? 0),
-        stepCount: allStepCount?.count ?? 0,
-      };
+  const stepCounts = await db
+    .select({
+      productId: stepsTable.productId,
+      stepCount: count(),
     })
-  );
+    .from(stepsTable)
+    .groupBy(stepsTable.productId);
 
-  res.json(stats);
+  const stepCountMap = new Map<number, number>(stepCounts.map((row) => [row.productId, row.stepCount]));
+
+  const stats = await db
+    .select({
+      productId: productsTable.id,
+      productName: productsTable.name,
+      totalReports: count(workReportsTable.id),
+      totalQuantityCompleted: sum(workReportsTable.quantityCompleted),
+      totalTimeMinutes: sum(workReportsTable.timeWorkedMinutes),
+    })
+    .from(productsTable)
+    .leftJoin(workReportsTable, eq(workReportsTable.productId, productsTable.id))
+    .leftJoin(stepsTable, eq(workReportsTable.stepId, stepsTable.id))
+    .where(or(isNull(stepsTable.stepNumber), eq(stepsTable.stepNumber, 99)))
+    .groupBy(productsTable.id, productsTable.name);
+
+  res.json(
+    stats.map((row) => ({
+      productId: row.productId,
+      productName: row.productName,
+      totalReports: row.totalReports,
+      totalQuantityCompleted: Number(row.totalQuantityCompleted ?? 0),
+      totalTimeMinutes: Number(row.totalTimeMinutes ?? 0),
+      stepCount: stepCountMap.get(row.productId) ?? 0,
+    })),
+  );
 });
 
 export default router;

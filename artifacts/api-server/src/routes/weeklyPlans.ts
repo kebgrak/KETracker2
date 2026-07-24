@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, weeklyPlansTable, productsTable, workReportsTable, stepsTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   ListWeeklyPlansQueryParams,
   CreateWeeklyPlanBody,
@@ -45,22 +46,19 @@ adminRouter.post("/weekly-plans", async (req, res) => {
   const weekStart = body.weekStart.toISOString().split("T")[0];
   const plannedQuantity = body.plannedQuantity;
 
-  // Upsert: delete any existing plan for this product+week, then insert
-  await db
-    .delete(weeklyPlansTable)
-    .where(
-      and(
-        eq(weeklyPlansTable.productId, productId),
-        eq(weeklyPlansTable.weekStart, weekStart),
-      ),
-    );
-
   const [inserted] = await db
     .insert(weeklyPlansTable)
     .values({
       productId,
       weekStart,
       plannedQuantity,
+    })
+    .onConflictDoUpdate({
+      target: [weeklyPlansTable.productId, weeklyPlansTable.weekStart],
+      set: {
+        plannedQuantity,
+        updatedAt: sql`now()`,
+      },
     })
     .returning();
 

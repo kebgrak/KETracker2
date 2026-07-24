@@ -44,36 +44,36 @@ import { exportToXlsx, importFromFile } from "@/lib/xlsx-utils";
 // ── week helpers ──────────────────────────────────────────────────────────
 
 function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  d.setUTCHours(0, 0, 0, 0);
   return d;
 }
 
 function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
 function getWeekRange(monday: Date) {
   const start = new Date(monday);
   const end = new Date(monday);
-  end.setDate(end.getDate() + 6);
+  end.setUTCDate(end.getUTCDate() + 6);
   return { start: formatDate(start), end: formatDate(end) };
 }
 
 function addWeeks(d: Date, weeks: number): Date {
   const result = new Date(d);
-  result.setDate(result.getDate() + weeks * 7);
+  result.setUTCDate(result.getUTCDate() + weeks * 7);
   return result;
 }
 
 function getISOWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -327,7 +327,8 @@ export default function WeeklyPlan() {
                 selected={currentWeekMonday}
                 onSelect={(date) => {
                   if (date) {
-                    setCurrentWeekMonday(getMondayOfWeek(date));
+                    const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+                    setCurrentWeekMonday(getMondayOfWeek(normalized));
                     setCalendarOpen(false);
                   }
                 }}

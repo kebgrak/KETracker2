@@ -8,7 +8,7 @@ import {
   useListSteps,
   useListReports,
   getListStepsQueryKey,
-  useCreateReport,
+  useCreateReportsBatch,
   getListReportsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -200,11 +200,11 @@ export default function OperatorEntry() {
       queryKey: getListStepsQueryKey(selectedProductId!),
     },
   });
-  const createReport = useCreateReport();
+  const createReportsBatch = useCreateReportsBatch();
 
   const today = (() => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
   })();
 
   const form = useForm<FormValues>({
@@ -472,22 +472,20 @@ export default function OperatorEntry() {
     }
 
     try {
-      await Promise.all(
-        reportsToCreate.map(({ stepId, time }) =>
-          createReport.mutateAsync({
-            data: {
-              operatorId: Number(values.operatorId),
-              productId: Number(values.productId),
-              stepId,
-              timeWorkedMinutes: time,
-              quantityCompleted: qty,
-              operatorCount: opCount,
-              reportDate: values.reportDate,
-              notes: values.notes || undefined,
-            },
-          })
-        )
-      );
+      await createReportsBatch.mutateAsync({
+        data: {
+          entries: reportsToCreate.map(({ stepId, time }) => ({
+            operatorId: Number(values.operatorId),
+            productId: Number(values.productId),
+            stepId,
+            timeWorkedMinutes: time,
+            quantityCompleted: qty,
+            operatorCount: opCount,
+            reportDate: values.reportDate,
+            notes: values.notes || undefined,
+          })),
+        },
+      });
       const count = reportsToCreate.length;
       toast({
         title: "Work report submitted",

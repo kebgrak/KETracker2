@@ -52,5 +52,12 @@ export async function upsertStep99(productId: number): Promise<void> {
 
 export async function initAllStep99(): Promise<void> {
   const products = await db.select({ id: productsTable.id }).from(productsTable);
-  await Promise.all(products.map((p) => upsertStep99(p.id)));
+  const batchSize = 4;
+
+  for (let index = 0; index < products.length; index += batchSize) {
+    const batch = products.slice(index, index + batchSize);
+    for (const product of batch) {
+      await upsertStep99(product.id);
+    }
+  }
 }

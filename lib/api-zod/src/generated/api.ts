@@ -315,7 +315,7 @@ export const ListReportsResponse = zod.array(ListReportsResponseItem);
 /**
  * @summary Submit a work report
  */
-export const CreateReportBody = zod.object({
+export const CreateReportEntryBody = zod.object({
   operatorId: zod.number(),
   productId: zod.number(),
   stepId: zod.number(),
@@ -324,6 +324,12 @@ export const CreateReportBody = zod.object({
   operatorCount: zod.number().nullish(),
   reportDate: zod.coerce.date(),
   notes: zod.string().nullish(),
+});
+
+export const CreateReportBody = CreateReportEntryBody;
+
+export const CreateReportsBatchBody = zod.object({
+  entries: zod.array(CreateReportEntryBody),
 });
 
 /**
